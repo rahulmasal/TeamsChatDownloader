@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teams Chat Downloader</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <div class="logo">
+          <img src="icon48.png" alt="" width="28" height="28" />
+          <h1>Teams Chat Downloader</h1>
+        </div>
+        <span class="version">v1.1</span>
+      </header>
+
+      <div id="status" class="status">
+        <span class="status-icon">💬</span>
+        <span class="status-text">Click "Scan Chat" to begin</span>
+      </div>
+
+      <div id="progress" class="progress-container" style="display: none">
+        <div class="progress-track">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <span class="progress-label" id="progressLabel">0%</span>
+      </div>
+
+      <div class="controls">
+        <div class="scan-options">
+          <button id="scanBtn" class="btn btn-primary" title="Quick scan of visible messages">
+            <span class="btn-icon">🔍</span> Scan Chat
+          </button>
+          <button id="scanFullBtn" class="btn btn-outline" title="Scroll through entire chat history">
+            <span class="btn-icon">📜</span> Full History
+          </button>
+        </div>
+
+        <div class="export-row">
+          <select id="formatSelect" class="select" title="Export format">
+            <option value="txt">📄 Plain Text (.txt)</option>
+            <option value="json">📋 JSON (.json)</option>
+            <option value="csv">📊 CSV (.csv)</option>
+            <option value="html">🌐 HTML (.html)</option>
+          </select>
+          <button id="downloadBtn" class="btn btn-success" disabled title="Download chat">
+            <span class="btn-icon">⬇️</span> Download
+          </button>
+        </div>
+      </div>
+
+      <div id="messageCount" class="message-count" style="display: none">
+        <span id="countText"></span>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <footer class="footer">
+        <span>All data stays in your browser</span>
+        <span class="dot">·</span>
+        <span id="strategyInfo"></span>
+      </footer>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

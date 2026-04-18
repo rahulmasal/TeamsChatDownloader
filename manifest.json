@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Teams Chat Downloader",
+  "version": "1.1.0",
+  "description": "Download Microsoft Teams chat history from web version with multiple export formats",
+  "permissions": ["activeTab", "storage", "downloads"],
+  "host_permissions": [
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Teams Chat Downloader"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
