@@ -1,0 +1,25 @@
+{
+  "name": "teams-chat-graph-exporter",
+  "version": "1.0.0",
+  "description": "Export Microsoft Teams chats with media using Graph API",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "export": "node index.js --export",
+    "list": "node index.js --list"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^2.16.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "chalk": "^5.3.0",
+    "cli-progress": "^3.12.0",
+    "commander": "^12.1.0",
+    "inquirer": "^9.3.0",
+    "isomorphic-fetch": "^3.0.0",
+    "open": "^10.1.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
