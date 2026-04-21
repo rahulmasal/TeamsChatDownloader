@@ -111,6 +111,12 @@ exported-chats/
 - No data is sent to any third party
 - Run `node index.js --logout` to clear saved credentials
 
+## 🛠️ Troubleshooting
+
+- **Auth Error (`AADSTS50011`)**: The Redirect URI in your Azure App doesn't match exactly. Ensure it is set to `https://login.microsoftonline.com/common/oauth2/nativeclient` and listed under "Mobile and desktop applications".
+- **Token Expired / Interactive Login Hangs**: Sometimes cached tokens get stale. Run `node index.js --logout` to clear the cache and sign in again.
+- **Rate Limit Errors (`429`)**: The tool automatically handles rate limits, but if you export massive datasets repetitively, Graph API might throttle you. Wait a few minutes and run the script again. The tool will automatically skip media it has already downloaded!
+
 ## 📄 License
 
 MIT License

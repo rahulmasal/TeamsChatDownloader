@@ -1,0 +1,32 @@
+[
+  {
+      "name": "data-tid",
+      "chatContainer": "[data-tid=\"chat-pane-list\"], [data-tid=\"chat-list\"], [data-tid=\"message-pane-list\"]",
+      "message": "[data-tid=\"chat-pane-message\"], [data-tid=\"message\"], [data-tid=\"message-body\"]",
+      "sender": "[data-tid=\"message-author-name\"], [data-tid=\"message-sender\"]",
+      "content": "[data-tid=\"message-text\"], [data-tid=\"message-content\"]",
+      "timestamp": "[data-tid=\"message-timestamp\"], [data-tid=\"ts-message-timestamp\"]",
+      "attachment": "[data-tid=\"file-card\"], [data-tid=\"message-attachment\"]",
+      "attachmentName": "[data-tid=\"file-card-name\"], [data-tid=\"attachment-name\"]"
+  },
+  {
+      "name": "aria-role",
+      "chatContainer": "[role=\"main\"] [role=\"list\"], [role=\"log\"]",
+      "message": "[role=\"listitem\"], [data-is-focusable=\"true\"]",
+      "sender": "[data-testid=\"message-author\"], .ui-chat__message__author",
+      "content": "[data-testid=\"message-body\"], .ui-chat__message__content",
+      "timestamp": "time[datetime], [data-testid=\"message-timestamp\"]",
+      "attachment": ".ui-attachment, [data-testid=\"file-attachment\"]",
+      "attachmentName": ".ui-attachment__header, [data-testid=\"file-name\"]"
+  },
+  {
+      "name": "class-based",
+      "chatContainer": ".ts-message-list-container, .message-list",
+      "message": ".ts-message, .message-body-content",
+      "sender": ".ts-message-sender, .message-sender-name",
+      "content": ".ts-message-text, .message-body-text",
+      "timestamp": ".ts-message-timestamp, time",
+      "attachment": ".ts-attachment, .file-attachment",
+      "attachmentName": ".ts-attachment-name, .file-name"
+  }
+]

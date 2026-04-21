@@ -6,9 +6,143 @@
  * Supports auto-scrolling to load full chat history.
  */
 
-// Selector strategies — ordered by priority.
-// Teams frequently changes its DOM; having fallbacks makes the extension more resilient.
-const SELECTOR_STRATEGIES = [
+// Import shared utilities
+const {
+    SELECTOR_STRATEGIES,
+    querySelectorFallback,
+    querySelectorAllFallback,
+    detectStrategy,
+    loadFullChat,
+    extractTimestamp,
+    sanitizeText
+} = window.TeamsChatUtils || {};
+
+/**
+ * Scan all visible chat messages using the detected strategy.
+ */
+function extractMessages(container, strategy) {
+    const messages = [];
+    const messageElements = querySelectorAllFallback(container, strategy.message);
+    const seen = new Set(); // For deduplication
+
+    messageElements.forEach(element => {
+        const senderEl = querySelectorFallback(element, strategy.sender);
+        const contentEl = querySelectorFallback(element, strategy.content);
+        const timestampEl = querySelectorFallback(element, strategy.timestamp);
+
+        const sender = sanitizeText(senderEl?.textContent?.trim() || 'Unknown');
+        const text = sanitizeText(contentEl?.textContent?.trim() || '');
+        const timestamp = extractTimestamp(timestampEl, strategy);
+
+        // Skip empty messages
+        if (!text && !senderEl) return;
+
+        // Deduplication key
+        const dedupKey = `${sender}|${timestamp}|${text.substring(0, 50)}`;
+        if (seen.has(dedupKey)) return;
+        seen.add(dedupKey);
+
+        // Extract attachments
+        const attachments = [];
+        const attachmentElements = querySelectorAllFallback(element, strategy.attachment);
+        attachmentElements.forEach(attachment => {
+            const nameEl = querySelectorFallback(attachment, strategy.attachmentName);
+            const name = sanitizeText(nameEl?.textContent?.trim());
+            if (name) attachments.push(name);
+        });
+
+        messages.push({
+            sender,
+            text,
+            timestamp: timestamp || Date.now(),
+            attachments
+        });
+    });
+
+    return messages;
+}
+
+/**
+ * Main scan function — called by the popup via message passing.
+ * @param {boolean} fullHistory - If true, auto-scrolls to load all messages.
+ * @param {function} onProgress - Progress callback (0-100).
+ */
+async function scanChat(fullHistory = false, onProgress = null) {
+    // Use the shared detectStrategy function if available, otherwise fall back to local implementation
+    const detected = detectStrategy ? detectStrategy() : localDetectStrategy();
+
+    if (!detected) {
+        return {
+            success: false,
+            error: 'Chat container not found. Make sure you have a chat open in Teams.',
+            diagnostics: {
+                url: window.location.href,
+                strategiesTried: (SELECTOR_STRATEGIES || localSelectorStrategies).map(s => s.name)
+            }
+        };
+    }
+
+    const { strategy, container } = detected;
+
+    // Optionally load full history by auto-scrolling
+    if (fullHistory) {
+        if (onProgress) onProgress(5);
+        await (loadFullChat ? loadFullChat(container, onProgress) : localLoadFullChat(container, onProgress));
+    }
+
+    if (onProgress) onProgress(95);
+
+    const messages = extractMessages(container, strategy);
+
+    if (messages.length === 0) {
+        return {
+            success: false,
+            error: 'No messages found in chat. The chat may be empty or the DOM structure has changed.',
+            diagnostics: {
+                strategy: strategy.name,
+                containerFound: true,
+                url: window.location.href
+            }
+        };
+    }
+
+    // Sort by timestamp
+    messages.sort((a, b) => a.timestamp - b.timestamp);
+
+    return {
+        success: true,
+        chatData: messages,
+        messageCount: messages.length,
+        strategy: strategy.name,
+        // Preview: last 10 messages, truncated
+        preview: messages.slice(-10).map(msg => ({
+            sender: msg.sender,
+            text: msg.text.substring(0, 100) + (msg.text.length > 100 ? '...' : ''),
+            timestamp: msg.timestamp
+        }))
+    };
+}
+
+// Local fallback implementations in case shared utils aren't available
+function localQuerySelectorFallback(root, selectorString) {
+    const selectors = selectorString.split(',').map(s => s.trim());
+    for (const selector of selectors) {
+        const el = root.querySelector(selector);
+        if (el) return el;
+    }
+    return null;
+}
+
+function localQuerySelectorAllFallback(root, selectorString) {
+    const selectors = selectorString.split(',').map(s => s.trim());
+    for (const selector of selectors) {
+        const elements = root.querySelectorAll(selector);
+        if (elements.length > 0) return elements;
+    }
+    return [];
+}
+
+const localSelectorStrategies = [
     {
         name: 'data-tid',
         chatContainer: '[data-tid="chat-pane-list"], [data-tid="chat-list"], [data-tid="message-pane-list"]',
@@ -41,35 +175,11 @@ const SELECTOR_STRATEGIES = [
     }
 ];
 
-/**
- * Find the first matching element using multiple selectors from a strategy.
- */
-function querySelectorFallback(root, selectorString) {
-    const selectors = selectorString.split(',').map(s => s.trim());
-    for (const selector of selectors) {
-        const el = root.querySelector(selector);
-        if (el) return el;
-    }
-    return null;
-}
-
-function querySelectorAllFallback(root, selectorString) {
-    const selectors = selectorString.split(',').map(s => s.trim());
-    for (const selector of selectors) {
-        const elements = root.querySelectorAll(selector);
-        if (elements.length > 0) return elements;
-    }
-    return [];
-}
-
-/**
- * Detect which selector strategy works for the current Teams DOM.
- */
-function detectStrategy() {
-    for (const strategy of SELECTOR_STRATEGIES) {
-        const container = querySelectorFallback(document, strategy.chatContainer);
+function localDetectStrategy() {
+    for (const strategy of localSelectorStrategies) {
+        const container = localQuerySelectorFallback(document, strategy.chatContainer);
         if (container) {
-            const messages = querySelectorAllFallback(container, strategy.message);
+            const messages = localQuerySelectorAllFallback(container, strategy.message);
             if (messages.length > 0) {
                 console.log(`[TeamsChatDownloader] Using selector strategy: ${strategy.name}`);
                 return { strategy, container };
@@ -79,11 +189,7 @@ function detectStrategy() {
     return null;
 }
 
-/**
- * Auto-scroll the chat container to load older messages.
- * Teams uses virtual scrolling, so only visible messages are in the DOM.
- */
-async function loadFullChat(container, onProgress) {
+async function localLoadFullChat(container, onProgress) {
     let previousHeight = 0;
     let attempts = 0;
     const maxAttempts = 50; // Safety limit to prevent infinite scrolling
@@ -110,11 +216,7 @@ async function loadFullChat(container, onProgress) {
     container.scrollTop = container.scrollHeight;
 }
 
-/**
- * Extract a timestamp value from a timestamp element.
- * Handles both data-timestamp attributes (Unix ms or s) and datetime attributes.
- */
-function extractTimestamp(element, strategy) {
+function localExtractTimestamp(element, strategy) {
     if (!element) return null;
 
     // Try data-timestamp attribute first
@@ -150,111 +252,6 @@ function extractTimestamp(element, strategy) {
     }
 
     return Date.now(); // Last resort fallback
-}
-
-/**
- * Scan all visible chat messages using the detected strategy.
- */
-function extractMessages(container, strategy) {
-    const messages = [];
-    const messageElements = querySelectorAllFallback(container, strategy.message);
-    const seen = new Set(); // For deduplication
-
-    messageElements.forEach(element => {
-        const senderEl = querySelectorFallback(element, strategy.sender);
-        const contentEl = querySelectorFallback(element, strategy.content);
-        const timestampEl = querySelectorFallback(element, strategy.timestamp);
-
-        const sender = senderEl?.textContent?.trim() || 'Unknown';
-        const text = contentEl?.textContent?.trim() || '';
-        const timestamp = extractTimestamp(timestampEl, strategy);
-
-        // Skip empty messages
-        if (!text && !senderEl) return;
-
-        // Deduplication key
-        const dedupKey = `${sender}|${timestamp}|${text.substring(0, 50)}`;
-        if (seen.has(dedupKey)) return;
-        seen.add(dedupKey);
-
-        // Extract attachments
-        const attachments = [];
-        const attachmentElements = querySelectorAllFallback(element, strategy.attachment);
-        attachmentElements.forEach(attachment => {
-            const nameEl = querySelectorFallback(attachment, strategy.attachmentName);
-            const name = nameEl?.textContent?.trim();
-            if (name) attachments.push(name);
-        });
-
-        messages.push({
-            sender,
-            text,
-            timestamp: timestamp || Date.now(),
-            attachments
-        });
-    });
-
-    return messages;
-}
-
-/**
- * Main scan function — called by the popup via message passing.
- * @param {boolean} fullHistory - If true, auto-scrolls to load all messages.
- * @param {function} onProgress - Progress callback (0-100).
- */
-async function scanChat(fullHistory = false, onProgress = null) {
-    const detected = detectStrategy();
-
-    if (!detected) {
-        return {
-            success: false,
-            error: 'Chat container not found. Make sure you have a chat open in Teams.',
-            diagnostics: {
-                url: window.location.href,
-                strategiesTried: SELECTOR_STRATEGIES.map(s => s.name)
-            }
-        };
-    }
-
-    const { strategy, container } = detected;
-
-    // Optionally load full history by auto-scrolling
-    if (fullHistory) {
-        if (onProgress) onProgress(5);
-        await loadFullChat(container, onProgress);
-    }
-
-    if (onProgress) onProgress(95);
-
-    const messages = extractMessages(container, strategy);
-
-    if (messages.length === 0) {
-        return {
-            success: false,
-            error: 'No messages found in chat. The chat may be empty or the DOM structure has changed.',
-            diagnostics: {
-                strategy: strategy.name,
-                containerFound: true,
-                url: window.location.href
-            }
-        };
-    }
-
-    // Sort by timestamp
-    messages.sort((a, b) => a.timestamp - b.timestamp);
-
-    return {
-        success: true,
-        chatData: messages,
-        messageCount: messages.length,
-        strategy: strategy.name,
-        // Preview: last 10 messages, truncated
-        preview: messages.slice(-10).map(msg => ({
-            sender: msg.sender,
-            text: msg.text.substring(0, 100) + (msg.text.length > 100 ? '...' : ''),
-            timestamp: msg.timestamp
-        }))
-    };
 }
 
 // ---- Message listener ----

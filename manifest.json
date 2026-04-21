@@ -14,11 +14,8 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://teams.microsoft.com/*",
-        "https://teams.live.com/*"
-      ],
-      "js": ["content.js"],
+      "matches": ["https://teams.microsoft.com/*", "https://teams.live.com/*"],
+      "js": ["shared-utils.js", "content.js"],
       "run_at": "document_idle"
     }
   ],

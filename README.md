@@ -50,7 +50,7 @@ A single-file userscript that injects a floating download button directly into T
 
 **Quick Start:**
 1. Install [Tampermonkey](https://www.tampermonkey.net/) in your browser
-2. Create a new script → Paste contents of [`tampermonkey/teams-chat-downloader.user.js`](tampermonkey/teams-chat-downloader.user.js)
+2. **[Click here to auto-install the script](https://raw.githubusercontent.com/rahulmasal/TeamsChatDownloader/main/tampermonkey/teams-chat-downloader.user.js)** (Tampermonkey will prompt you to install it)
 3. Open Teams → Click "💬 Chat Downloader" button in bottom-right
 
 ---

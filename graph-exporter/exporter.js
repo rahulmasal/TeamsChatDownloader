@@ -47,13 +47,31 @@ export async function exportChat(chat, outputDir, options = {}, onProgress = nul
         return { chatName, messageCount: 0, mediaCount: 0 };
     }
 
-    // Process messages and download media
-    const processedMessages = [];
+    // Async pool helper for concurrent message processing
+    async function asyncPool(poolLimit, array, iteratorFn) {
+        const ret = [];
+        const executing = [];
+        for (const item of array) {
+            const p = Promise.resolve().then(() => iteratorFn(item));
+            ret.push(p);
+            if (poolLimit <= array.length) {
+                const e = p.then(() => executing.splice(executing.indexOf(e), 1));
+                executing.push(e);
+                if (executing.length >= poolLimit) {
+                    await Promise.race(executing);
+                }
+            }
+        }
+        return Promise.all(ret);
+    }
+
+    // Process messages and download media concurrently
     let mediaCount = 0;
     let mediaErrors = 0;
+    let processedCount = 0;
+    const concurrencyLimit = options.concurrency || 3;
 
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
+    const processedMessages = await asyncPool(concurrencyLimit, messages, async (msg) => {
         const processed = {
             id: msg.id,
             sender: extractSender(msg),
@@ -73,19 +91,30 @@ export async function exportChat(chat, outputDir, options = {}, onProgress = nul
         if (options.downloadMedia !== false && msg.hostedContents?.length > 0) {
             for (const hc of msg.hostedContents) {
                 try {
-                    const buffer = await downloadHostedContent(chat.id, msg.id, hc.id);
                     const ext = getExtensionFromContentType(hc.contentType || 'image/png');
                     const filename = `inline_${msg.id.substring(0, 8)}_${hc.id.substring(0, 8)}${ext}`;
                     const filePath = path.join(mediaDir, filename);
-                    fs.writeFileSync(filePath, buffer);
 
-                    processed.hostedImages.push({
-                        id: hc.id,
-                        filename,
-                        contentType: hc.contentType,
-                        localPath: `media/${filename}`,
-                    });
-                    mediaCount++;
+                    if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                        // Skip download, file exists
+                        processed.hostedImages.push({
+                            id: hc.id,
+                            filename,
+                            contentType: hc.contentType,
+                            localPath: `media/${filename}`,
+                        });
+                        mediaCount++;
+                    } else {
+                        const buffer = await downloadHostedContent(chat.id, msg.id, hc.id);
+                        fs.writeFileSync(filePath, buffer);
+                        processed.hostedImages.push({
+                            id: hc.id,
+                            filename,
+                            contentType: hc.contentType,
+                            localPath: `media/${filename}`,
+                        });
+                        mediaCount++;
+                    }
                 } catch (err) {
                     mediaErrors++;
                     processed.hostedImages.push({
@@ -134,16 +163,17 @@ export async function exportChat(chat, outputDir, options = {}, onProgress = nul
             processed.body = inlineImages.updatedBody;
         }
 
-        processedMessages.push(processed);
-
-        if (onProgress && i % 20 === 0) {
+        processedCount++;
+        if (onProgress && processedCount % 20 === 0) {
             onProgress(
                 'processing',
-                Math.round(((i + 1) / messages.length) * 100),
-                `Processing ${i + 1}/${messages.length}... (${mediaCount} media files)`
+                Math.round((processedCount / messages.length) * 100),
+                `Processing ${processedCount}/${messages.length}... (${mediaCount} media files)`
             );
         }
-    }
+
+        return processed;
+    });
 
     // Write chat metadata
     const metadata = {
@@ -212,14 +242,20 @@ async function processAttachment(att, chatId, messageId, mediaDir) {
                 if (urlMatch) {
                     const driveItem = await getDriveItemDownloadUrl(urlMatch[1], urlMatch[2]);
                     if (driveItem && driveItem['@microsoft.graph.downloadUrl']) {
-                        const buffer = await downloadDriveItem(
-                            driveItem['@microsoft.graph.downloadUrl']
-                        );
                         const safeName = sanitizeFilename(att.name || driveItem.name || 'file');
                         const filePath = path.join(mediaDir, safeName);
-                        fs.writeFileSync(filePath, buffer);
-                        attInfo.localPath = `media/${safeName}`;
-                        attInfo.size = buffer.length;
+                        
+                        if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                            attInfo.localPath = `media/${safeName}`;
+                            attInfo.size = fs.statSync(filePath).size;
+                        } else {
+                            const buffer = await downloadDriveItem(
+                                driveItem['@microsoft.graph.downloadUrl']
+                            );
+                            fs.writeFileSync(filePath, buffer);
+                            attInfo.localPath = `media/${safeName}`;
+                            attInfo.size = buffer.length;
+                        }
                     }
                 }
             } catch (err) {
@@ -232,13 +268,19 @@ async function processAttachment(att, chatId, messageId, mediaDir) {
     // Inline/file attachments with direct content
     if (att.contentUrl && !att.contentUrl.startsWith('https://teams.microsoft.com')) {
         try {
-            const buffer = await downloadDriveItem(att.contentUrl);
             const ext = getExtensionFromContentType(att.contentType || '');
-            const safeName = sanitizeFilename(att.name || `attachment_${Date.now()}${ext}`);
+            const safeName = sanitizeFilename(att.name || `attachment_${messageId.substring(0, 10)}${ext}`);
             const filePath = path.join(mediaDir, safeName);
-            fs.writeFileSync(filePath, buffer);
-            attInfo.localPath = `media/${safeName}`;
-            attInfo.size = buffer.length;
+
+            if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+                attInfo.localPath = `media/${safeName}`;
+                attInfo.size = fs.statSync(filePath).size;
+            } else {
+                const buffer = await downloadDriveItem(att.contentUrl);
+                fs.writeFileSync(filePath, buffer);
+                attInfo.localPath = `media/${safeName}`;
+                attInfo.size = buffer.length;
+            }
         } catch (err) {
             attInfo.downloadError = err.message;
         }
