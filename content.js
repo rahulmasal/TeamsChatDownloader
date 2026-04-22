@@ -68,8 +68,8 @@ function extractMessages(container, strategy) {
  * @param {function} onProgress - Progress callback (0-100).
  */
 async function scanChat(fullHistory = false, onProgress = null) {
-    // Use the shared detectStrategy function if available, otherwise fall back to local implementation
-    const detected = detectStrategy ? detectStrategy() : localDetectStrategy();
+    // Use the shared detectStrategy function
+    const detected = detectStrategy();
 
     if (!detected) {
         return {
@@ -77,7 +77,7 @@ async function scanChat(fullHistory = false, onProgress = null) {
             error: 'Chat container not found. Make sure you have a chat open in Teams.',
             diagnostics: {
                 url: window.location.href,
-                strategiesTried: (SELECTOR_STRATEGIES || localSelectorStrategies).map(s => s.name)
+                strategiesTried: SELECTOR_STRATEGIES.map(s => s.name)
             }
         };
     }
@@ -87,7 +87,7 @@ async function scanChat(fullHistory = false, onProgress = null) {
     // Optionally load full history by auto-scrolling
     if (fullHistory) {
         if (onProgress) onProgress(5);
-        await (loadFullChat ? loadFullChat(container, onProgress) : localLoadFullChat(container, onProgress));
+        await loadFullChat(container, onProgress);
     }
 
     if (onProgress) onProgress(95);
@@ -121,137 +121,6 @@ async function scanChat(fullHistory = false, onProgress = null) {
             timestamp: msg.timestamp
         }))
     };
-}
-
-// Local fallback implementations in case shared utils aren't available
-function localQuerySelectorFallback(root, selectorString) {
-    const selectors = selectorString.split(',').map(s => s.trim());
-    for (const selector of selectors) {
-        const el = root.querySelector(selector);
-        if (el) return el;
-    }
-    return null;
-}
-
-function localQuerySelectorAllFallback(root, selectorString) {
-    const selectors = selectorString.split(',').map(s => s.trim());
-    for (const selector of selectors) {
-        const elements = root.querySelectorAll(selector);
-        if (elements.length > 0) return elements;
-    }
-    return [];
-}
-
-const localSelectorStrategies = [
-    {
-        name: 'data-tid',
-        chatContainer: '[data-tid="chat-pane-list"], [data-tid="chat-list"], [data-tid="message-pane-list"]',
-        message: '[data-tid="chat-pane-message"], [data-tid="message"], [data-tid="message-body"]',
-        sender: '[data-tid="message-author-name"], [data-tid="message-sender"]',
-        content: '[data-tid="message-text"], [data-tid="message-content"]',
-        timestamp: '[data-tid="message-timestamp"], [data-tid="ts-message-timestamp"]',
-        attachment: '[data-tid="file-card"], [data-tid="message-attachment"]',
-        attachmentName: '[data-tid="file-card-name"], [data-tid="attachment-name"]'
-    },
-    {
-        name: 'aria-role',
-        chatContainer: '[role="main"] [role="list"], [role="log"]',
-        message: '[role="listitem"], [data-is-focusable="true"]',
-        sender: '[data-testid="message-author"], .ui-chat__message__author',
-        content: '[data-testid="message-body"], .ui-chat__message__content',
-        timestamp: 'time[datetime], [data-testid="message-timestamp"]',
-        attachment: '.ui-attachment, [data-testid="file-attachment"]',
-        attachmentName: '.ui-attachment__header, [data-testid="file-name"]'
-    },
-    {
-        name: 'class-based',
-        chatContainer: '.ts-message-list-container, .message-list',
-        message: '.ts-message, .message-body-content',
-        sender: '.ts-message-sender, .message-sender-name',
-        content: '.ts-message-text, .message-body-text',
-        timestamp: '.ts-message-timestamp, time',
-        attachment: '.ts-attachment, .file-attachment',
-        attachmentName: '.ts-attachment-name, .file-name'
-    }
-];
-
-function localDetectStrategy() {
-    for (const strategy of localSelectorStrategies) {
-        const container = localQuerySelectorFallback(document, strategy.chatContainer);
-        if (container) {
-            const messages = localQuerySelectorAllFallback(container, strategy.message);
-            if (messages.length > 0) {
-                console.log(`[TeamsChatDownloader] Using selector strategy: ${strategy.name}`);
-                return { strategy, container };
-            }
-        }
-    }
-    return null;
-}
-
-async function localLoadFullChat(container, onProgress) {
-    let previousHeight = 0;
-    let attempts = 0;
-    const maxAttempts = 50; // Safety limit to prevent infinite scrolling
-
-    while (attempts < maxAttempts) {
-        const currentHeight = container.scrollHeight;
-
-        if (currentHeight === previousHeight && attempts > 2) {
-            // No new content loaded after scrolling — we've reached the top
-            break;
-        }
-
-        previousHeight = currentHeight;
-        container.scrollTop = 0; // Scroll to top to trigger lazy loading
-
-        const progress = Math.min(90, Math.round((attempts / maxAttempts) * 90));
-        if (onProgress) onProgress(progress);
-
-        await new Promise(resolve => setTimeout(resolve, 1200));
-        attempts++;
-    }
-
-    // Scroll back to bottom so the user sees the latest messages
-    container.scrollTop = container.scrollHeight;
-}
-
-function localExtractTimestamp(element, strategy) {
-    if (!element) return null;
-
-    // Try data-timestamp attribute first
-    const dataTs = element.getAttribute('data-timestamp');
-    if (dataTs) {
-        let ts = parseInt(dataTs, 10);
-        if (!isNaN(ts)) {
-            // If it looks like seconds instead of milliseconds, convert
-            if (ts < 1e12) ts *= 1000;
-            return ts;
-        }
-    }
-
-    // Try datetime attribute (ISO 8601)
-    const datetime = element.getAttribute('datetime');
-    if (datetime) {
-        const d = new Date(datetime);
-        if (!isNaN(d.getTime())) return d.getTime();
-    }
-
-    // Try title attribute as a displayable date
-    const title = element.getAttribute('title');
-    if (title) {
-        const d = new Date(title);
-        if (!isNaN(d.getTime())) return d.getTime();
-    }
-
-    // Fallback: use textContent as a date string
-    const text = element.textContent?.trim();
-    if (text) {
-        const d = new Date(text);
-        if (!isNaN(d.getTime())) return d.getTime();
-    }
-
-    return Date.now(); // Last resort fallback
 }
 
 // ---- Message listener ----

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xxd shared-utils.js)",
+      "Bash(awk 'NR==173' shared-utils.js)"
+    ]
+  }
+}
